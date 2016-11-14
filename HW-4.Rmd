@@ -1,6 +1,6 @@
 ---
 title: "MATH 216 Homework 4"
-author: "WRITE YOUR NAME HERE"
+author: "Kyra Gray"
 output:
   html_document:
     toc: true
@@ -24,9 +24,9 @@ library(broom)
 
 Please indicate
 
-* Who you collaborated with:
-* Roughly how much time you spent on this HW so far:
-* The URL of the RPubs published URL [here](https://www.nhl.com/).
+* Who you collaborated with: Amanda Hotvedt and Katherine Hobbs
+* Roughly how much time you spent on this HW so far: 5 hours
+* The URL of the RPubs published URL [here](http://rpubs.com/kyragray/HW4).
 * What gave you the most trouble:
 * Any comments you have:
 
@@ -43,24 +43,86 @@ which is marked on the map with a large red dot.
 
 ```{r, eval=TRUE, echo=FALSE, message=FALSE, warning=FALSE, fig.width=8, fig.height=4.5}
 # Perform your computations here:
+census_counties <- read_csv("~/Desktop/Middlebury/Data Science/HW-4/census_counties.csv")
+
+states_shp <- us_states()
+states_data <- states_shp@data
+states_polygon <- tidy(states_shp, region="geoid")
+states <- left_join(states_polygon, states_data, by=c("id"="geoid"))
+states <- states %>%
+  filter( !name %in% c("Alaska", "Hawaii", "Puerto Rico"))
+
+counties_shp <- us_counties()
+counties_data <- counties_shp@data %>% mutate(n=1:3220)
+counties_polygon <- tidy(counties_shp, region="geoid")
+
+counties_centroid <- counties_shp %>% sp::coordinates()
+
+centroid <- as.data.frame(counties_centroid) %>% 
+  mutate(long = V1) %>% 
+  mutate(lat = V2) %>% 
+  mutate(n=1:3220) %>% 
+  select(long, lat, n)
+
+
+counties_data <- left_join(counties_data, centroid, by = "n")
+counties <- left_join(counties_polygon, counties_data, by=c("id"="geoid")) %>% 
+  filter(!state_name %in% c("Alaska", "Hawaii", "Puerto Rico"))
+
+population <- census_counties %>% 
+  select(Geo_FIPS, SE_T001_001, SE_T002_002)
+
+counties_pop <- left_join(counties, population, by=c("id"="Geo_FIPS"))
+
+# Let's plot a chloropleth map of the US to see where the most people live 
+ggplot() +
+  coord_map() +
+  geom_polygon(data=counties_pop, aes(x=long.x, y=lat.x, group=group, fill=log(SE_T001_001))) +
+  scale_fill_gradient(low="white", high="darkgreen") +
+  labs(title="Population distribution of the US")
+
+find_hub <- counties_pop %>% 
+  select(id, n, long.y, lat.y, SE_T001_001) %>% 
+  unique() 
+find_hub[is.na(find_hub)] <- 1081726      
+
+find_hub_long <- find_hub %>% 
+  mutate(long_hub_ind=((long.y)*(SE_T001_001))/sum(SE_T001_001)) %>% 
+  summarise(sum(long_hub_ind))
+
+find_hub_lat <- find_hub %>% 
+  mutate(lat_hub_ind=((lat.y)*(SE_T001_001))/sum(SE_T001_001)) %>% 
+  summarise(sum(lat_hub_ind))
+
+## hub lat = 37.55538 long = -91.59852
+
+find_dist <- find_hub %>% 
+  mutate(dist=sqrt((lat.y-37.55538)^2 + (long.y+91.59852)^2))
+
+counties_dist <-left_join(counties, find_dist, by="id") %>% 
+  mutate(hub_x_coord=-91.59852) %>% 
+  mutate(hub_y_coord=37.55538)
+
+hub_coords <- counties_dist %>% select(hub_x_coord, hub_y_coord ) %>% distinct()
 
 ```
 
 
-```{r, eval=FALSE, echo=FALSE, message=FALSE, warning=FALSE, fig.width=8, fig.height=4.5}
+```{r, eval=TRUE, echo=FALSE, message=FALSE, warning=FALSE, fig.width=8, fig.height=4.5}
 # Here is a template of a ggplot call; feel free to change this to suit your
 # needs. Once your computations above are complete, set the eval=TRUE on the
 # line above to tell R Markdown to run this code block.
-ggplot(data=geo_data, aes(x=long, y=lat, group=group, fill=distance)) +
+ggplot(data=counties_dist, aes(x=long.x, y=lat.x, group=group, fill=dist)) +
   # Plot choropleth polygons, low -> high being colored white -> dark green
   geom_polygon() +
   scale_fill_gradient(low="white", high="darkgreen") + 
   # Trace outlines of areas
   geom_path(size=0.1) +
   # Mark hub
-  annotate("point", x=hub_x_coord, y=hub_y_coord, col="red", size=5) +
+  annotate("point", x=hub_coords$hub_x_coord, y=hub_coords$hub_y_coord, col="red", size=5) +
   # Correct aspect ratio for map
-  coord_map()
+  coord_map() +
+  labs(title="County Distance from suggested DHL Hub")
 ```
 
 
